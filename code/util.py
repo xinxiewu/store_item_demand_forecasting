@@ -5,12 +5,14 @@ util.py contains custom functions:
     3. missing_detect: Detect if any missing value for each variable
     4. variable_dist: Generate plots of variables' distribution and save
     5. q1_sale_growth_by_year: Generate plots of Q1 and save
+    6. q23_sale_growth: Generate plots of Q2 or Q3 and save
 """
 import requests
 import pandas as pd
 import os
 import matplotlib.pyplot as plt
 import seaborn as sns
+import math
 
 # download_file(url, output)
 def download_file(url=None, output=r'../public/output'):
@@ -98,37 +100,89 @@ def variable_dist(df=None, cols=None, countplot=['store'], fname='variable_dist.
 
 # q1_sale_growth_by_year()
 def q1_sale_growth_by_year(df=None, fname='q1_sale_growth_year.png', output=r'../public/output',
-                           subplots=[2,2], figsize=(30,20), periods=['year', 'month'], cats=['sales', 'growth']):
+                           subplots=[2,2], figsize=(40,20), periods=['year', 'month'], cats=['sales', 'growth']):
     """ Generate plots of sales & growth by year/month and save
 
     Args:
         df: input dataframe
-        cols: columns from the input dataframe, df.columns
 
     Returns:
-        Nothing to return
+        fname
     """
-    # sns.set()
+    sns.set()
     fig, axes = plt.subplots(subplots[0], subplots[1], figsize=figsize)
     ax, i = axes.flatten(), 0
     for cat in cats:
         for period in periods:
             if cat.lower() == 'sales':
                 data_df = df[[period, cat]].groupby(by=[period]).sum().reset_index()
-                data_df[cat] = data_df[cat].apply(lambda x: format(x/1000000, '.2f'))
+                data_df[cat] = data_df[cat].apply(lambda x: float(format(x/1000000, '.2f')))
                 temp = sns.lineplot(data=data_df, x=period, y=cat, ax=ax[i])
-                temp.invert_yaxis()
                 temp.set(xlabel=period, ylabel=f"{cat} (M)", title=f"{cat.capitalize()} Trend by {period.capitalize()} (M)")
-                temp.set_xticklabels(temp.get_xticklabels(), rotation=30)
+                if period == 'month':
+                    temp.set_xticklabels(temp.get_xticklabels(), rotation=45)
             elif cat.lower() == 'growth':
                 variable = 'sales'
                 data_df = df[[period, variable]].groupby(by=[period]).sum().reset_index()
-                data_df[cat] = (data_df[variable].diff()/data_df[variable])
+                data_df[cat] = (data_df[variable].diff()/data_df[variable].shift(1))
                 data_df.dropna(inplace=True)
-                data_df[cat] = data_df[cat].apply(lambda x: format(x, '.2%'))
+                data_df[cat] = data_df[cat].apply(lambda x: float(format(x*100, '.2f')))
                 temp = sns.lineplot(data=data_df, x=period, y=cat, ax=ax[i])
                 temp.set(xlabel=period, ylabel=f"{cat} (%)", title=f"{cat.capitalize()} Trend by {period.capitalize()} (%)")
-                temp.set_xticklabels(temp.get_xticklabels(), rotation=30)
+                if period == 'month':
+                    temp.set_xticklabels(temp.get_xticklabels(), rotation=45)
+            i += 1
+    plt.tight_layout()
+    plt.savefig(os.path.join(output, fname))
+    return fname
+
+# q23_sale_growth(): Generate plots of Q2/Q3 and save
+def q23_sale_growth(df=None, fname='q2_sale_growth_store.png', output=r'../public/output', key_0=2,
+                           subplots=[2,2], figsize=(40,20), periods=['year', 'month'], cats=['sales', 'growth']):
+    """ Generate plots of sales & growth by store or items and save
+
+    Args:
+        df: input dataframe
+
+    Returns:
+        fname
+    """
+    sns.set()
+    fig, axes = plt.subplots(subplots[0], subplots[1], figsize=figsize)
+    ax, i = axes.flatten(), 0
+    if key_0 == 2:
+        key = 'store'
+    elif key_0 == 3:
+        key = 'item'
+    for cat in cats:
+        for period in periods:
+            if cat.lower() == 'sales':
+                data_df = df[[key, period, cat]].groupby(by=[key, period]).sum().reset_index()
+                if key == 'item':
+                    data_df[cat] = data_df[cat].apply(lambda x: float(format(x/1000, '.2f')))
+                else:
+                    data_df[cat] = data_df[cat].apply(lambda x: float(format(x/1000000, '.2f')))
+                temp = sns.lineplot(data=data_df, x=period, y=cat, hue=key, ax=ax[i])
+                if key == 'item':
+                    temp.set(xlabel=period, ylabel=f"{cat} (K)", title=f"{cat.capitalize()} Trend by {period.capitalize()} (K)")
+                else:
+                    temp.set(xlabel=period, ylabel=f"{cat} (M)", title=f"{cat.capitalize()} Trend by {period.capitalize()} (M)")
+                if period == 'month':
+                    temp.set_xticklabels(temp.get_xticklabels(), rotation=45)
+            elif cat.lower() == 'growth':
+                variable = 'sales'
+                data_df = df[[key, period, variable]].groupby(by=[key, period]).sum().reset_index()
+                data_df[cat] = (data_df[variable].diff()/data_df[variable].shift(1))
+                if period == 'year':
+                    data_df.loc[getattr(data_df,period)=='2013', [cat]] = math.nan
+                if period == 'month':
+                    data_df.loc[getattr(data_df,period)=='2013-01', [cat]] = math.nan
+                data_df.dropna(inplace=True)
+                data_df[cat] = data_df[cat].apply(lambda x: float(format(x*100, '.2f')))
+                temp = sns.lineplot(data=data_df, x=period, y=cat, hue=key, ax=ax[i])
+                temp.set(xlabel=period, ylabel=f"{cat} (%)", title=f"{cat.capitalize()} Trend by {period.capitalize()} (%)")
+                if period == 'month':
+                    temp.set_xticklabels(temp.get_xticklabels(), rotation=45)
             i += 1
     plt.tight_layout()
     plt.savefig(os.path.join(output, fname))
